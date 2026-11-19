@@ -1,0 +1,25 @@
+fastapi>=0.115,<1.0
+uvicorn>=0.34,<1.0
+# Without a WebSocket library uvicorn answers /ws/live with 404 and dashboards fall back to polling.
+websockets>=13.0
+pydantic-settings>=2.7,<3.0
+sqlalchemy>=2.0,<3.0
+alembic>=1.14,<2.0
+psycopg[binary]>=3.2,<4.0
+# Password hashing. bcrypt directly rather than passlib: passlib is
+# unmaintained and its bcrypt backend breaks against bcrypt 4+.
+bcrypt>=4.2,<6.0
+# Access tokens.
+pyjwt>=2.10,<3.0
+# Ed25519 signatures for live video tickets: a media server at a farm verifies them with a public key.
+cryptography>=44.0
+# Required by pydantic's EmailStr; pydantic does not pull it in itself.
+email-validator>=2.2,<3.0
+# Presigned upload and download URLs for video files in S3-compatible storage
+# (Cloudflare R2 in production, an S3 stand-in locally). The backend never streams the bytes.
+boto3>=1.40,<2.0
+# Time zone database for zoneinfo. Windows and slim container images ship none,
+# and the reports cut days in the farm's zone (America/Bogota).
+tzdata>=2025.2
+# The language model that words the farm assistant's replies.
+anthropic>=2.4,<3.0
