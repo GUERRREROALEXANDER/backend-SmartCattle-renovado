@@ -1,0 +1,34 @@
+from fastapi import APIRouter, Depends
+
+from app import __version__
+from app.core.config import Settings
+from app.dependencies import get_app_settings
+from app.schemas.status import AIServiceStatus, HealthResponse, StatusResponse, WelcomeResponse
+
+router = APIRouter(tags=["health"])
+
+
+@router.get("/", response_model=WelcomeResponse)
+def welcome() -> WelcomeResponse:
+    return WelcomeResponse(name="SmartCattle Backend", version=__version__, docs="/docs")
+
+
+@router.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(status="ok")
+
+
+@router.get("/api/health", response_model=HealthResponse)
+def api_health() -> HealthResponse:
+    """The same answer under /api: what the keep-alive and outside monitors ask for. It touches no database."""
+    return HealthResponse(status="ok")
+
+
+@router.get("/api/status", response_model=StatusResponse)
+def status(settings: Settings = Depends(get_app_settings)) -> StatusResponse:
+    return StatusResponse(
+        status="ok", version=__version__,
+        ai_service=AIServiceStatus(configured=settings.smartcattle_ai_url is not None),
+        storage=settings.storage_name,
+        auth_enabled=settings.auth_enabled,
+    )
