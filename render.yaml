@@ -1,0 +1,128 @@
+# Render Blueprint: New -> Blueprint -> select this repository.
+# Creates this API and the frontend static site (from its own repository).
+# The database lives on Neon: Render asks for DATABASE_URL when the Blueprint is created.
+# If Render adds a suffix to a service URL because the name is taken, update
+# ALLOWED_ORIGINS and VITE_API_BASE_URL to the real URLs.
+services:
+  - type: web
+    name: smartcattle-backend
+    runtime: python
+    # Free instances run on a fraction of a CPU and can restart at any moment; this one must stay up.
+    plan: starter
+    # A commit whose tests fail never reaches the running service.
+    autoDeployTrigger: checksPass
+    buildCommand: pip install -r requirements.txt
+    # Migrations run on every deploy before the API starts.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws-max-size 65536 --timeout-keep-alive 20 --no-server-header
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.1
+      # Neon connection string (postgresql://...?sslmode=require), entered in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false
+      - key: AI_API_KEY
+        generateValue: true
+      # Signs the access tokens. generateValue so the deployment never runs with
+      # authentication off and never gets a secret somebody typed from memory.
+      #
+      # Render generates this once and keeps it across deploys. Replacing it by
+      # hand signs every user out, because tokens are verified against it and
+      # there is no session table to consult.
+      - key: JWT_SECRET
+        generateValue: true
+      # Each farm signs up by itself, and every account gets its own empty space (ACCOUNT_ISOLATION).
+      - key: PUBLIC_REGISTRATION
+        value: "true"
+      - key: REQUIRE_AUTH_FOR_READS
+        value: "true"
+      - key: API_DOCS_ENABLED
+        value: "false"
+      # Render and Cloudflare are the proxy here, so these headers are theirs and not the client's.
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: ACCESS_TOKEN_MINUTES
+        value: "60"
+      - key: ALLOWED_ORIGINS
+        value: https://smartcattle-frontend.onrender.com,http://localhost:5173
+      # Works for every account from the start. An account that links a PC at its farm uses that PC instead.
+      - key: SMARTCATTLE_AI_URL
+        value: http://localhost:8090
+      # The API asks for its own /api/health every 12 minutes so a free instance is not put to sleep. It finds its
+      # public address in RENDER_EXTERNAL_URL, which Render sets by itself.
+      - key: KEEP_ALIVE_ENABLED
+        value: "true"
+      - key: KEEP_ALIVE_MINUTES
+        value: "12"
+      # The cover page's video ("Video Inicio"). Empty: the cover shows its 3D scene.
+      - key: VIDEO_INICIO_URL
+        sync: false
+      # Owners who may change that video from Settings, comma-separated emails.
+      - key: SITE_ADMIN_EMAILS
+        sync: false
+      - key: CAMERA_OFFLINE_AFTER_SECONDS
+        value: "60"
+      # Cloudflare R2 bucket for uploaded videos (docs/DEPLOYMENT.md). Leave
+      # all four empty to switch video uploads off (they answer 503); setting
+      # only some of them stops the service from starting.
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: VIDEO_STORAGE_ENDPOINT
+        sync: false
+      - key: VIDEO_STORAGE_BUCKET
+        sync: false
+      - key: VIDEO_STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: VIDEO_STORAGE_SECRET_ACCESS_KEY
+        sync: false
+      - key: VIDEO_STORAGE_REGION
+        value: auto
+      - key: VIDEO_UPLOAD_URL_MINUTES
+        value: "120"
+      # Imou developer account (open.imoulife.com): its cameras are recommended on the Cameras page and open
+      # through Imou's cloud, from anywhere. The AI service needs the same two values. Both or neither.
+      - key: IMOU_APP_ID
+        sync: false
+      - key: IMOU_APP_SECRET
+        sync: false
+
+  - type: web
+    name: smartcattle-frontend
+    runtime: static
+    repo: https://github.com/GUERRREROALEXANDER/fronted-SmartCattle
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      # https: and wss: because a camera's AI service can report any public address (a tunnel, another server).
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    routes:
+      # Client-side routes (/live, /cameras, ...) are served by index.html.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: VITE_API_BASE_URL
+        value: https://smartcattle-backend.onrender.com
+      - key: VITE_DATA_SOURCE
+        value: hybrid
+      - key: VITE_AI_SERVICE_URL
+        value: https://smartcattle-live.onrender.com
