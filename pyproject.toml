@@ -1,0 +1,104 @@
+[project]
+name = "smartcattle-backend"
+version = "0.1.0"
+description = "REST API for SmartCattle: AI cattle events, camera status, video analyses and metrics."
+requires-python = ">=3.13"
+readme = "README.md"
+
+# Runtime and development dependencies stay in requirements.txt and
+# requirements-dev.txt: Render installs them directly with pip, and duplicating
+# them here would let the two lists drift apart.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Lets `pytest` import the app package from the repository root, the same way
+# alembic.ini does it with prepend_sys_path. Without this only the
+# `python -m pytest` form works, because that one puts the working directory
+# on sys.path itself.
+pythonpath = ["."]
+# Treat warnings as errors so a deprecation in FastAPI, SQLAlchemy or Pydantic
+# surfaces in CI instead of the day the dependency drops the feature.
+filterwarnings = [
+    "error",
+    # starlette.testclient warns at import time that httpx is deprecated in
+    # favour of httpx2. Switching test clients is not part of this change.
+    "default:Using `httpx` with `starlette.testclient` is deprecated:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [".venv", "migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "UP",       # pyupgrade: keep the syntax current with the Python floor
+    "B",        # bugbear: likely bugs rather than style
+    "C4",       # comprehensions
+    "SIM",      # simplifiable code
+    "RET",      # unnecessary branches around returns
+    "ARG",      # unused arguments, which usually mean a stale signature
+    "DTZ",      # naive datetimes: every timestamp in SmartCattle is UTC-aware
+    "ASYNC",    # blocking calls inside async functions
+    "S",        # bandit security checks
+    "PTH",      # pathlib over os.path
+    "RUF",
+]
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies, query and path metadata as argument defaults.
+# Without this list every route signature trips B008 (function call in default).
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Security",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use fixed demo secrets and hard-code URLs on purpose.
+"tests/*" = ["S101", "S105", "S106", "ARG001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "data_structures"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["app", "data_structures"]
+# tests/ is deliberately out of scope: pytest functions take fixtures by name
+# and return nothing, so strict annotations there add noise without catching
+# defects. What ships is what gets checked.
+exclude = ['\.venv', '^migrations/versions/']
+# No SQLAlchemy mypy plugin: since 2.0 the Mapped[] annotations are plain
+# generics that mypy reads natively, and the plugin was dropped in 2.1.
+
+[[tool.mypy.overrides]]
+# Alembic's env module runs as a script, not as importable library code.
+module = "migrations.env"
+ignore_errors = true
+
+[tool.coverage.run]
+branch = true
+# The in-memory and SQL stores are separate code paths and both ship; a line
+# covered in one does not mean the other works.
+parallel = false
+
+[tool.coverage.report]
+exclude_also = [
+    # Demonstration blocks in data_structures/. They exist to be read and run
+    # by hand; counting them as uncovered makes the number say less, not more.
+    'if __name__ == .__main__.:',
+    # Protocol declarations: bodies are literally "...".
+    '^\s*\.\.\.$',
+    'class .*\(Protocol\):',
+    # Asserts that state what a query already guarantees. Reaching one means
+    # the guarantee broke, which is a bug and not a branch to test.
+    'assert .* is not None  # noqa: S101',
+    # TYPE_CHECKING imports never run.
+    'if TYPE_CHECKING:',
+]
